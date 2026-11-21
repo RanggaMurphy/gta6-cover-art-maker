@@ -99,6 +99,7 @@ export async function jalankanShot(params) {
     seal: true,
     grain: true,
     vignette: true,
+    skyline: true,
     panels,
   };
 

@@ -131,6 +131,123 @@ function gambarCelahPanel(ctx, layout, W, H) {
   }
 }
 
+/** One palm silhouette: a curved trunk and fanned fronds, in the skyline band. */
+function gambarPalma(ctx, x, dasar, tinggi, skala) {
+  const puncakX = x + tinggi * 0.12;
+  const puncakY = dasar - tinggi;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(16,6,28,0.88)';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(2, 3.2 * skala);
+  ctx.beginPath();
+  ctx.moveTo(x, dasar);
+  ctx.quadraticCurveTo(x + tinggi * 0.04, dasar - tinggi * 0.55, puncakX, puncakY);
+  ctx.stroke();
+  ctx.lineWidth = Math.max(1.4, 2.2 * skala);
+  const arahDaun = [-1.15, -0.75, -0.35, 0.05, 0.45, 0.85, 1.2];
+  for (const arah of arahDaun) {
+    const panjang = tinggi * (0.42 + 0.1 * Math.cos(arah));
+    const ujungX = puncakX + Math.sin(arah) * panjang;
+    const ujungY = puncakY + panjang * 0.38;
+    ctx.beginPath();
+    ctx.moveTo(puncakX, puncakY);
+    ctx.quadraticCurveTo(
+      puncakX + Math.sin(arah) * panjang * 0.55,
+      puncakY - panjang * 0.22,
+      ujungX,
+      ujungY,
+    );
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * Palm and city skyline silhouette along the top edge: a shallow dark
+ * band of building rectangles with a few lit windows and palm trees.
+ * Deterministic, drawn from a seeded source, never deeper than 7% of H.
+ */
+function gambarSkyline(ctx, W, H) {
+  const tinggiPita = H * 0.07;
+  const skala = W / 1080;
+  const acak = mulberry32(20261122);
+  ctx.save();
+  ctx.fillStyle = 'rgba(16,6,28,0.88)';
+  const posisiPalma = [0.16, 0.52, 0.84];
+  let x = 0;
+  let indeksGedung = 0;
+  while (x < W) {
+    const lebar = W * (0.028 + acak() * 0.038);
+    const tinggi = tinggiPita * (0.58 + acak() * 0.42);
+    ctx.fillRect(x, 0, lebar, tinggi);
+    // A few lit windows, only on taller buildings.
+    if (tinggi > tinggiPita * 0.68) {
+      const kolom = Math.max(1, Math.floor(lebar / (9 * skala)));
+      for (let k = 0; k < kolom; k++) {
+        for (let b = 0; b < 3; b++) {
+          if (acak() > 0.42) continue;
+          const wx = x + 3 * skala + k * 9 * skala;
+          const wy = 5 * skala + b * 9 * skala;
+          if (wy < tinggi - 4 * skala) {
+            ctx.fillStyle = 'rgba(255,214,120,0.85)';
+            ctx.fillRect(wx, wy, 2.6 * skala, 3.2 * skala);
+            ctx.fillStyle = 'rgba(16,6,28,0.88)';
+          }
+        }
+      }
+    }
+    x += lebar;
+    indeksGedung += 1;
+  }
+  for (const posisi of posisiPalma) {
+    gambarPalma(ctx, posisi * W, tinggiPita * 1.5, tinggiPita * 1.42, skala);
+  }
+  ctx.restore();
+}
+
+/** Halftone print texture: faint dots in overlay blend over the whole cover. */
+function gambarHalftone(ctx, W, H) {
+  const skala = W / 1080;
+  const jarak = 9 * skala;
+  const jari = 1.5 * skala;
+  ctx.save();
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = 0.05;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  for (let y = jarak / 2; y < H; y += jarak) {
+    for (let x = jarak / 2; x < W; x += jarak) {
+      ctx.moveTo(x + jari, y);
+      ctx.arc(x, y, jari, 0, Math.PI * 2);
+    }
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Neon rim light: a soft pink-to-cyan inner glow just inside the frame. */
+function gambarRimNeon(ctx, W, H) {
+  const skala = W / 1080;
+  const lebar = 10 * skala;
+  ctx.save();
+  const gradien = ctx.createLinearGradient(0, 0, W, H);
+  gradien.addColorStop(0, 'rgba(255,46,166,0.20)');
+  gradien.addColorStop(1, 'rgba(0,229,255,0.12)');
+  ctx.strokeStyle = gradien;
+  ctx.lineWidth = lebar;
+  ctx.shadowColor = 'rgba(255,46,166,0.45)';
+  ctx.shadowBlur = 18 * skala;
+  ctx.strokeRect(lebar / 2, lebar / 2, W - lebar, H - lebar);
+  ctx.restore();
+}
+
+/** The v2 poster finish: halftone, skyline silhouette and neon rim. */
+function gambarSelesaiPoster(ctx, W, H) {
+  gambarHalftone(ctx, W, H);
+  gambarSkyline(ctx, W, H);
+  gambarRimNeon(ctx, W, H);
+}
+
 /** The title block: big sheared title, subtitle, small line, on a soft dark wash. */
 function gambarJudul(ctx, zona, state, W, H) {
   const zx = zona.x * W;
@@ -164,11 +281,15 @@ function gambarJudul(ctx, zona, state, W, H) {
     kilau.addColorStop(0.55, '#ff9a3d');
     kilau.addColorStop(0.75, '#ff5e8a');
     kilau.addColorStop(1, '#7b5cff');
+    ctx.shadowColor = 'rgba(255,120,60,0.55)';
+    ctx.shadowBlur = ukuranJudul * 0.18;
     ctx.strokeStyle = '#160a20';
     ctx.lineWidth = ukuranJudul * 0.07;
     ctx.strokeText(judul, 0, 0);
     ctx.fillStyle = kilau;
     ctx.fillText(judul, 0, 0);
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
   } else if (state.titleStyle === 'outline') {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = ukuranJudul * 0.055;
@@ -196,7 +317,16 @@ function gambarJudul(ctx, zona, state, W, H) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillText(sub, zx, zy + zh * 0.78);
+  const lebarSub = ctx.measureText(sub).width;
   ctx.letterSpacing = '0px';
+  if (state.titleStyle === 'chrome' && lebarSub > 0) {
+    const gradienBar = ctx.createLinearGradient(zx, 0, zx + lebarSub, 0);
+    gradienBar.addColorStop(0, '#ffffff');
+    gradienBar.addColorStop(0.5, '#ff5e8a');
+    gradienBar.addColorStop(1, '#7b5cff');
+    ctx.fillStyle = gradienBar;
+    ctx.fillRect(zx, zy + zh * 0.84, lebarSub, 0.012 * H);
+  }
 
   const kecil = (state.tagline || '').toUpperCase();
   ctx.font = `${Math.max(10, zh * 0.085)}px "Bebas Neue", sans-serif`;
@@ -278,7 +408,7 @@ function gambarVignette(ctx, W, H) {
 /**
  * Draw one whole poster onto `kanvas` from `state`.
  * state: { layout, grade, title, subtitle, tagline, titleStyle, seal,
- * grain, vignette, panels: [{ photo, zoom, ox, oy }] }.
+ * grain, vignette, skyline, panels: [{ photo, zoom, ox, oy }] }.
  */
 export function gambarCover(kanvas, state) {
   const ctx = kanvas.getContext('2d');
@@ -292,6 +422,7 @@ export function gambarCover(kanvas, state) {
     gambarPanelFoto(ctx, panel, state.panels[i], state.grade, W, H);
   });
   gambarCelahPanel(ctx, state.layout, W, H);
+  if (state.skyline !== false) gambarSelesaiPoster(ctx, W, H);
   gambarJudul(ctx, state.layout.titleZone, state, W, H);
   if (state.seal) gambarSegel(ctx, W, H);
   gambarKredit(ctx, W, H);

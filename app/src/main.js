@@ -50,6 +50,7 @@ const state = {
   seal: true,
   grain: true,
   vignette: true,
+  skyline: true,
   panels: [],
   terpilih: 0,
 };
@@ -84,6 +85,7 @@ function statusKeCover() {
     seal: state.seal,
     grain: state.grain,
     vignette: state.vignette,
+    skyline: state.skyline,
     panels: state.panels,
   };
 }
@@ -220,6 +222,10 @@ function bangunKontrol() {
     state.vignette = e.target.checked;
     gambarUlang();
   });
+  document.getElementById('skylineCheck').addEventListener('change', (e) => {
+    state.skyline = e.target.checked;
+    gambarUlang();
+  });
 
   document.getElementById('exportSquare').addEventListener('click', () => exportPNG('square'));
   document.getElementById('exportPortrait').addEventListener('click', () => exportPNG('portrait'));
@@ -242,6 +248,7 @@ function sinkronKontrol() {
   document.getElementById('sealCheck').checked = state.seal;
   document.getElementById('grainCheck').checked = state.grain;
   document.getElementById('vignetteCheck').checked = state.vignette;
+  document.getElementById('skylineCheck').checked = state.skyline;
   if (segarkanLayout) segarkanLayout();
   if (segarkanGrade) segarkanGrade();
   if (segarkanGaya) segarkanGaya();
@@ -461,6 +468,7 @@ async function mulai() {
     state.seal = adegan.seal;
     state.grain = adegan.grain;
     state.vignette = adegan.vignette;
+    state.skyline = adegan.skyline !== false;
     state.panels = adegan.panels.map((p) => ({
       photo: p.photo,
       photoId: p.photoId,
