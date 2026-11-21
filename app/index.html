@@ -3,20 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cover Snap</title>
+<title>Neon Bay Cover Studio</title>
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">NB</span> Neon Bay <em>Cover Studio</em></div>
+  <p class="tagline">Turn your photos into a multi-panel poster. Everything runs in this page, offline.</p>
+</header>
 <main class="app">
-  <section class="controls">
-    <h1>Cover Snap</h1>
-    <p>A photo and a caption, made into a square cover.</p>
-    <label>Photo <input id="photo" type="file" accept="image/*"></label>
-    <label>Caption <input id="caption" type="text" maxlength="40" value="Sunset Heist"></label>
-    <button id="export" type="button">Export PNG 1080 x 1080</button>
-    <p id="status" role="status"></p>
+  <section class="stage">
+    <div class="canvas-wrap">
+      <canvas id="cover" width="1080" height="1080" aria-label="Cover preview"></canvas>
+      <p class="hint" id="panelHint">Click a panel to select it, drag to move its photo, scroll to zoom.</p>
+    </div>
+    <div class="tray" id="tray" aria-label="Photos"></div>
+    <label class="upload">Add your own photos
+      <input id="upload" type="file" accept="image/*" multiple>
+    </label>
   </section>
-  <canvas id="cover" width="1080" height="1080" aria-label="The cover"></canvas>
+
+  <aside class="controls">
+    <section class="group">
+      <h2>1 &middot; Layout</h2>
+      <div class="choices" id="layoutChoices"></div>
+    </section>
+
+    <section class="group">
+      <h2>2 &middot; Photo in the selected panel</h2>
+      <p class="panel-name" id="panelName">Panel 1</p>
+      <label>Zoom <input id="zoom" type="range" min="1" max="3" step="0.01" value="1"></label>
+      <label>Move sideways <input id="panX" type="range" min="-0.5" max="0.5" step="0.01" value="0"></label>
+      <label>Move up and down <input id="panY" type="range" min="-0.5" max="0.5" step="0.01" value="0"></label>
+      <div class="row">
+        <button id="fillPanel" type="button">Fill with this photo</button>
+        <button id="fillAll" type="button">One photo, all panels</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>3 &middot; Words</h2>
+      <label>Title <input id="title" type="text" maxlength="24" value="NEON BAY"></label>
+      <label>Subtitle <input id="subtitle" type="text" maxlength="40" value="SUNSET HEIST"></label>
+      <label>Small line <input id="tagline" type="text" maxlength="60" value="WELCOME TO THE BAY &middot; EST. 2026"></label>
+      <div class="choices" id="titleStyles"></div>
+      <label class="check"><input id="seal" type="checkbox" checked> Round seal on the cover</label>
+    </section>
+
+    <section class="group">
+      <h2>4 &middot; Grade</h2>
+      <div class="choices" id="gradeChoices"></div>
+      <label class="check"><input id="grain" type="checkbox" checked> Film grain</label>
+      <label class="check"><input id="vignette" type="checkbox" checked> Vignette</label>
+    </section>
+
+    <section class="group export">
+      <h2>5 &middot; Export PNG</h2>
+      <div class="row">
+        <button id="exportSquare" type="button">1080 &times; 1080</button>
+        <button id="exportPortrait" type="button">1080 &times; 1350</button>
+        <button id="exportWide" type="button">1920 &times; 1080</button>
+      </div>
+      <button id="shuffle" type="button" class="ghost">Surprise me</button>
+      <p id="status" role="status"></p>
+    </section>
+  </aside>
 </main>
 <script type="module" src="./src/main.js"></script>
 </body>
