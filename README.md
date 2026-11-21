@@ -1,8 +1,8 @@
 # gta6-cover-art-maker
 
-[![Make GTA 6 Cover Art](https://img.shields.io/badge/make.fun-gta6--cover--art--01-ff5e8a)](https://make.fun/c/gta6-cover-art-01)
-[![Rank: awaiting judging](https://img.shields.io/badge/rank-awaiting%20judging-lightgrey)](https://make.fun/c/gta6-cover-art-01)
-[![Prize pool $250](https://img.shields.io/badge/prize-%24250-ff9a3d)](https://make.fun/c/gta6-cover-art-01)
+[![make.fun · gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![rank](https://make.fun/badge/gta6-cover-art-01/RanggaMurphy/gta6-cover-art-maker/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![reward](https://make.fun/badge/gta6-cover-art-01/RanggaMurphy/gta6-cover-art-maker/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 
 **Neon Bay Cover Studio** — an offline web app that turns your photos and a caption into GTA 6-style cover art: a multi-panel poster look, bold chrome lettering, and a Vice City sunset or neon grade, exported as a PNG to share. Built by RanggaMurphy for the make.fun competition "Make GTA 6 Cover Art" (gta6-cover-art-01).
 
