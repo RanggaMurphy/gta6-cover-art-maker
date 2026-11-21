@@ -1,298 +1,301 @@
-// Draws the whole poster onto a canvas at the canvas's own size: photo panels
-// with the chosen grade, then the big title, subtitle, seal and finish.
-// Everything is drawn from `state`, so the preview and the PNG export share
-// one code path and always match.
+// cover.js — the cover engine of Neon Bay Cover Studio.
+// gambarCover draws one whole poster onto any canvas, at any size, from a
+// state: layout, grade, words, title style, seal, grain, vignette and one
+// photo state per panel (photo, zoom, ox, oy). Everything is drawn in
+// code: no image is fetched, no network is touched.
 
-import { gradeById } from './grades.js';
-import { layoutById } from './layouts.js';
-
-/** Tiny seeded random, so the film grain is identical on every export. */
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+/** A small seeded random source, so the grain tile is identical every run. */
+function mulberry32(benih) {
+  let a = benih >>> 0;
+  return function acakBerikutnya() {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-let grainTile = null;
-function getGrainTile() {
-  if (grainTile) return grainTile;
-  const tile = document.createElement('canvas');
-  tile.width = 160;
-  tile.height = 160;
-  const tctx = tile.getContext('2d');
-  const img = tctx.createImageData(160, 160);
-  const rnd = mulberry32(20261121);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = Math.floor(rnd() * 255);
-    img.data[i] = v;
-    img.data[i + 1] = v;
-    img.data[i + 2] = v;
-    img.data[i + 3] = 255;
+/** The grain tile, built once and reused for every grain pass. */
+let ubinGrain = null;
+function ambilUbinGrain() {
+  if (ubinGrain) return ubinGrain;
+  const ubin = document.createElement('canvas');
+  ubin.width = 160;
+  ubin.height = 160;
+  const k = ubin.getContext('2d');
+  const data = k.createImageData(160, 160);
+  const acak = mulberry32(20261121);
+  for (let i = 0; i < data.data.length; i += 4) {
+    const nilai = Math.floor(acak() * 255);
+    data.data[i] = nilai;
+    data.data[i + 1] = nilai;
+    data.data[i + 2] = nilai;
+    data.data[i + 3] = 255;
   }
-  tctx.putImageData(img, 0, 0);
-  grainTile = tile;
-  return tile;
+  k.putImageData(data, 0, 0);
+  ubinGrain = ubin;
+  return ubin;
 }
 
-/** Cover-fits `photo` into a panel rect, honouring the panel's zoom and pan. */
-function drawPanelPhoto(ctx, photo, rect, zoom, ox, oy) {
-  const base = Math.max(rect.w / photo.naturalWidth, rect.h / photo.naturalHeight);
-  const dw = photo.naturalWidth * base * zoom;
-  const dh = photo.naturalHeight * base * zoom;
-  const dx = rect.x + (rect.w - dw) / 2 + ox * rect.w;
-  const dy = rect.y + (rect.h - dh) / 2 + oy * rect.h;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(rect.x, rect.y, rect.w, rect.h);
-  ctx.clip();
-  ctx.drawImage(photo, dx, dy, dw, dh);
-  ctx.restore();
+/** Clamp a panel shift so the photo never leaves its panel bare. */
+function batasiGeser(nilai, sisa) {
+  if (sisa <= 0) return 0;
+  const geser = nilai * sisa * 0.5;
+  return Math.max(-sisa / 2, Math.min(sisa / 2, geser));
 }
 
-/** One translucent gradient wash over a rect, in the grade's blend mode. */
-function drawWash(ctx, rect, wash) {
-  const grad = wash.top
-    ? ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h)
-    : ctx.createLinearGradient(rect.x, rect.y + rect.h, rect.x, rect.y);
-  grad.addColorStop(0, wash.from);
-  grad.addColorStop(1, wash.to);
+/** One grade wash: a translucent gradient over a panel, in its blend mode. */
+function gambarWashGrade(ctx, wash, px, py, pw, ph) {
+  const gradien = wash.dir === 'bottom'
+    ? ctx.createLinearGradient(0, py + ph, 0, py)
+    : ctx.createLinearGradient(0, py, 0, py + ph);
+  gradien.addColorStop(0, wash.from);
+  gradien.addColorStop(1, wash.to);
   ctx.save();
   ctx.globalCompositeOperation = wash.blend;
-  ctx.fillStyle = grad;
-  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.fillStyle = gradien;
+  ctx.fillRect(px, py, pw, ph);
   ctx.restore();
 }
 
-function fitFont(ctx, text, fontFamily, maxWidth, startSize, weight = '') {
-  let size = startSize;
-  const set = () => { ctx.font = `${weight} ${size}px ${fontFamily}`; };
-  set();
-  while (ctx.measureText(text).width > maxWidth && size > 10) {
-    size -= 2;
-    set();
+/** One photo panel: cover-fit photo with zoom and pan, grade, washes. */
+function gambarPanelFoto(ctx, panel, keadaanPanel, grade, W, H) {
+  const px = panel.x * W;
+  const py = panel.y * H;
+  const pw = panel.w * W;
+  const ph = panel.h * H;
+  const foto = keadaanPanel ? keadaanPanel.photo : null;
+  if (!foto || !foto.naturalWidth) {
+    ctx.fillStyle = '#2a1f38';
+    ctx.fillRect(px, py, pw, ph);
+    ctx.fillStyle = 'rgba(244,238,247,0.7)';
+    ctx.font = `${Math.max(12, 0.028 * H)}px "Bebas Neue", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ADD A PHOTO', px + pw / 2, py + ph / 2);
+    return;
   }
-  return size;
-}
-
-/** The big slanted title in the layout's title zone. */
-function drawTitle(ctx, state, zone, W, H) {
-  const title = (state.title || '').trim().toUpperCase();
-  const sub = (state.subtitle || '').trim().toUpperCase();
-  const tag = (state.tagline || '').trim().toUpperCase();
-  if (!title && !sub) return;
-
-  // A soft dark foot so white letters read over any photo.
-  const foot = ctx.createLinearGradient(0, zone.y - zone.h * 0.35, 0, zone.y + zone.h);
-  foot.addColorStop(0, 'rgba(12, 5, 24, 0)');
-  foot.addColorStop(1, 'rgba(12, 5, 24, 0.62)');
-  ctx.fillStyle = foot;
-  ctx.fillRect(zone.x - W * 0.04, zone.y - zone.h * 0.35, zone.w + W * 0.08, zone.h * 1.35);
-
   ctx.save();
-  ctx.translate(zone.x, zone.y);
-  // A slight forward lean, the poster slant.
-  ctx.transform(1, 0, -0.045, 1, 0, 0);
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-
-  let cursorY = 0;
-  if (title) {
-    const size = fitFont(ctx, title, '"Anton", sans-serif', zone.w, zone.h * 0.5, '400');
-    cursorY = size;
-    const chrome = ctx.createLinearGradient(0, cursorY - size, 0, cursorY + size * 0.1);
-    chrome.addColorStop(0, '#ffffff');
-    chrome.addColorStop(0.35, '#ffe9a8');
-    chrome.addColorStop(0.62, '#ff9a3d');
-    chrome.addColorStop(0.85, '#ff5e8a');
-    chrome.addColorStop(1, '#c44dff');
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = size * 0.08;
-    ctx.shadowOffsetY = size * 0.03;
-    if (state.titleStyle === 'outline') {
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = size * 0.055;
-      ctx.strokeText(title, 0, cursorY);
-      ctx.fillStyle = 'rgba(20, 6, 32, 0.85)';
-      ctx.fillText(title, 0, cursorY);
-    } else if (state.titleStyle === 'solid') {
-      ctx.fillStyle = '#ffffff';
-      ctx.lineWidth = size * 0.04;
-      ctx.strokeStyle = 'rgba(10, 4, 20, 0.9)';
-      ctx.strokeText(title, 0, cursorY);
-      ctx.fillText(title, 0, cursorY);
-    } else {
-      ctx.lineWidth = size * 0.05;
-      ctx.strokeStyle = 'rgba(10, 4, 20, 0.95)';
-      ctx.strokeText(title, 0, cursorY);
-      ctx.fillStyle = chrome;
-      ctx.fillText(title, 0, cursorY);
-    }
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-    cursorY += size * 0.1;
-  }
-  if (sub) {
-    const size = fitFont(ctx, sub, '"Bebas Neue", sans-serif', zone.w, zone.h * 0.2, '400');
-    try { ctx.letterSpacing = `${Math.round(size * 0.18)}px`; } catch { /* older canvas */ }
-    ctx.font = `400 ${size}px "Bebas Neue", sans-serif`;
-    ctx.fillStyle = '#ffe9a8';
-    ctx.lineWidth = size * 0.06;
-    ctx.strokeStyle = 'rgba(10, 4, 20, 0.9)';
-    ctx.strokeText(sub, 0, cursorY + size);
-    ctx.fillText(sub, 0, cursorY + size);
-    try { ctx.letterSpacing = '0px'; } catch { /* older canvas */ }
-    cursorY += size * 1.12;
-  }
-  if (tag) {
-    const size = Math.max(10, zone.h * 0.075);
-    ctx.font = `400 ${size}px "Bebas Neue", sans-serif`;
-    try { ctx.letterSpacing = `${Math.round(size * 0.3)}px`; } catch { /* older canvas */ }
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillText(tag, 0, cursorY + size);
-    try { ctx.letterSpacing = '0px'; } catch { /* older canvas */ }
-  }
-  ctx.restore();
-}
-
-/** A small round seal, top right, with the studio name set around the rim. */
-function drawSeal(ctx, W, H) {
-  const cx = W * 0.885;
-  const cy = H * 0.105;
-  const r = Math.min(W, H) * 0.062;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(-0.18);
   ctx.beginPath();
-  ctx.arc(0, 0, r, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255, 94, 138, 0.92)';
-  ctx.fill();
-  ctx.lineWidth = Math.max(2, r * 0.07);
-  ctx.strokeStyle = '#fff';
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.78, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-  ctx.lineWidth = Math.max(1, r * 0.035);
-  ctx.stroke();
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `${r * 0.52}px "Anton", sans-serif`;
-  ctx.fillText('NB', 0, -r * 0.1);
-  ctx.font = `${r * 0.2}px "Bebas Neue", sans-serif`;
-  try { ctx.letterSpacing = `${Math.round(r * 0.06)}px`; } catch { /* older canvas */ }
-  ctx.fillText('EST. 2026', 0, r * 0.42);
-  try { ctx.letterSpacing = '0px'; } catch { /* older canvas */ }
-  ctx.restore();
-}
-
-/** The tiny credits line along the very foot, movie-poster style. */
-function drawBilling(ctx, W, H) {
-  const size = Math.max(11, H * 0.0135);
-  ctx.save();
-  ctx.font = `400 ${size}px "Bebas Neue", sans-serif`;
-  try { ctx.letterSpacing = `${Math.round(size * 0.22)}px`; } catch { /* older canvas */ }
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-  ctx.fillText('A NEON BAY COVER STUDIO ORIGINAL  ·  PHOTOS BY YOU  ·  MADE OFFLINE IN YOUR BROWSER', W / 2, H - H * 0.012);
+  ctx.rect(px, py, pw, ph);
+  ctx.clip();
+  const zoom = keadaanPanel.zoom || 1;
+  const skala = Math.max(pw / foto.naturalWidth, ph / foto.naturalHeight) * zoom;
+  const dw = foto.naturalWidth * skala;
+  const dh = foto.naturalHeight * skala;
+  const geserX = batasiGeser(keadaanPanel.ox || 0, dw - pw);
+  const geserY = batasiGeser(keadaanPanel.oy || 0, dh - ph);
+  ctx.filter = grade.filter;
+  ctx.drawImage(foto, px + (pw - dw) / 2 + geserX, py + (ph - dh) / 2 + geserY, dw, dh);
+  ctx.filter = 'none';
+  for (const wash of grade.washes) gambarWashGrade(ctx, wash, px, py, pw, ph);
   ctx.restore();
 }
 
 /**
- * Renders the poster described by `state` onto `canvas` (any size).
- * state: { layout, grade, title, subtitle, tagline, titleStyle, seal, grain,
- *   vignette, panels: [{ photo, zoom, ox, oy }] }.
+ * The white gaps between panels, drawn only along the sides two panels
+ * share, never as a full line across the canvas.
  */
-export function drawCover(canvas, state) {
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width;
-  const H = canvas.height;
-  const layout = layoutById(state.layout);
-  const grade = gradeById(state.grade);
-  const gutter = Math.max(2, Math.round(W * 0.004));
+function gambarCelahPanel(ctx, layout, W, H) {
+  const celah = 6 * (W / 1080);
+  const panel = layout.panels;
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < panel.length; i++) {
+    for (let j = i + 1; j < panel.length; j++) {
+      const a = panel[i];
+      const b = panel[j];
+      const tepiTegakKiri = (a.x + a.w + b.x) / 2;
+      const tepiTegakKanan = (b.x + b.w + a.x) / 2;
+      if (Math.abs(a.x + a.w - b.x) < 0.008) {
+        const atas = Math.max(a.y, b.y) * H;
+        const bawah = Math.min(a.y + a.h, b.y + b.h) * H;
+        if (bawah - atas > 4) ctx.fillRect(tepiTegakKiri * W - celah / 2, atas, celah, bawah - atas);
+      } else if (Math.abs(b.x + b.w - a.x) < 0.008) {
+        const atas = Math.max(a.y, b.y) * H;
+        const bawah = Math.min(a.y + a.h, b.y + b.h) * H;
+        if (bawah - atas > 4) ctx.fillRect(tepiTegakKanan * W - celah / 2, atas, celah, bawah - atas);
+      }
+      if (Math.abs(a.y + a.h - b.y) < 0.008) {
+        const tepi = ((a.y + a.h) + b.y) / 2;
+        const kiri = Math.max(a.x, b.x) * W;
+        const kanan = Math.min(a.x + a.w, b.x + b.w) * W;
+        if (kanan - kiri > 4) ctx.fillRect(kiri, tepi * H - celah / 2, kanan - kiri, celah);
+      } else if (Math.abs(b.y + b.h - a.y) < 0.008) {
+        const tepi = ((b.y + b.h) + a.y) / 2;
+        const kiri = Math.max(a.x, b.x) * W;
+        const kanan = Math.min(a.x + a.w, b.x + b.w) * W;
+        if (kanan - kiri > 4) ctx.fillRect(kiri, tepi * H - celah / 2, kanan - kiri, celah);
+      }
+    }
+  }
+}
 
+/** The title block: big sheared title, subtitle, small line, on a soft dark wash. */
+function gambarJudul(ctx, zona, state, W, H) {
+  const zx = zona.x * W;
+  const zy = zona.y * H;
+  const zw = zona.w * W;
+  const zh = zona.h * H;
+
+  const latar = ctx.createLinearGradient(0, zy, 0, zy + zh);
+  latar.addColorStop(0, 'rgba(12,6,20,0)');
+  latar.addColorStop(1, 'rgba(12,6,20,0.62)');
+  ctx.fillStyle = latar;
+  ctx.fillRect(zx, zy, zw, zh);
+
+  const judul = (state.title || '').toUpperCase();
+  let ukuranJudul = zh * 0.5;
+  ctx.font = `${ukuranJudul}px Anton, sans-serif`;
+  while (ukuranJudul > 24 && ctx.measureText(judul).width > zw * 0.98) {
+    ukuranJudul *= 0.92;
+    ctx.font = `${ukuranJudul}px Anton, sans-serif`;
+  }
   ctx.save();
-  ctx.filter = 'none';
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 1;
+  ctx.translate(zx, zy + zh * 0.42);
+  ctx.transform(1, 0, -0.045, 1, 0, 0);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  if (state.titleStyle === 'chrome') {
+    const kilau = ctx.createLinearGradient(0, -ukuranJudul * 0.55, 0, ukuranJudul * 0.55);
+    kilau.addColorStop(0, '#ffffff');
+    kilau.addColorStop(0.35, '#ffe9a8');
+    kilau.addColorStop(0.55, '#ff9a3d');
+    kilau.addColorStop(0.75, '#ff5e8a');
+    kilau.addColorStop(1, '#7b5cff');
+    ctx.strokeStyle = '#160a20';
+    ctx.lineWidth = ukuranJudul * 0.07;
+    ctx.strokeText(judul, 0, 0);
+    ctx.fillStyle = kilau;
+    ctx.fillText(judul, 0, 0);
+  } else if (state.titleStyle === 'outline') {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = ukuranJudul * 0.055;
+    ctx.strokeText(judul, 0, 0);
+    ctx.fillStyle = '#1a0f24';
+    ctx.fillText(judul, 0, 0);
+  } else {
+    ctx.strokeStyle = '#160a20';
+    ctx.lineWidth = ukuranJudul * 0.03;
+    ctx.strokeText(judul, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(judul, 0, 0);
+  }
+  ctx.restore();
+
+  const sub = (state.subtitle || '').toUpperCase();
+  let ukuranSub = zh * 0.17;
+  ctx.font = `${ukuranSub}px "Bebas Neue", sans-serif`;
+  ctx.letterSpacing = `${Math.round(ukuranSub * 0.22)}px`;
+  while (ukuranSub > 12 && ctx.measureText(sub).width > zw * 0.98) {
+    ukuranSub *= 0.9;
+    ctx.font = `${ukuranSub}px "Bebas Neue", sans-serif`;
+  }
+  ctx.fillStyle = '#ffe9a8';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(sub, zx, zy + zh * 0.78);
+  ctx.letterSpacing = '0px';
+
+  const kecil = (state.tagline || '').toUpperCase();
+  ctx.font = `${Math.max(10, zh * 0.085)}px "Bebas Neue", sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.78)';
+  ctx.fillText(kecil, zx, zy + zh * 0.96);
+}
+
+/** The round pink seal in the top-right corner. */
+function gambarSegel(ctx, W, H) {
+  const cx = W * 0.905;
+  const cy = H * 0.075;
+  const r = W * 0.052;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.1);
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff5e8a';
+  ctx.fill();
+  ctx.lineWidth = Math.max(2, r * 0.06);
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.78, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${r * 0.6}px Anton, sans-serif`;
+  ctx.fillText('NB', 0, -r * 0.14);
+  ctx.font = `${r * 0.26}px "Bebas Neue", sans-serif`;
+  ctx.fillText('EST. 2026', 0, r * 0.42);
+  ctx.restore();
+}
+
+/** The small credits line along the bottom edge, centred, on its own dark band. */
+function gambarKredit(ctx, W, H) {
+  const ukuran = Math.max(9, 11 * (W / 1080));
+  const tinggiPita = 26 * (H / 1080);
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,5,18,0.55)';
+  ctx.fillRect(0, H - tinggiPita, W, tinggiPita);
+  ctx.font = `${ukuran}px system-ui, sans-serif`;
+  ctx.letterSpacing = '2px';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.shadowColor = 'rgba(0,0,0,0.65)';
+  ctx.shadowBlur = 4 * (W / 1080);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fillText(
+    'A NEON BAY COVER STUDIO ORIGINAL · PHOTOS BY YOU · MADE OFFLINE IN YOUR BROWSER',
+    W / 2,
+    H - 10 * (H / 1080),
+  );
+  ctx.restore();
+}
+
+/** Film grain: the seeded noise tile, faint, in overlay blend. */
+function gambarGrain(ctx, W, H) {
+  ctx.save();
+  ctx.globalAlpha = 0.09;
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.fillStyle = ctx.createPattern(ambilUbinGrain(), 'repeat');
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+/** Vignette: a dark radial falloff toward the edges. */
+function gambarVignette(ctx, W, H) {
+  const gradien = ctx.createRadialGradient(
+    W / 2, H / 2, Math.min(W, H) * 0.42,
+    W / 2, H / 2, Math.max(W, H) * 0.75,
+  );
+  gradien.addColorStop(0, 'rgba(8,3,14,0)');
+  gradien.addColorStop(1, 'rgba(8,3,14,0.42)');
+  ctx.fillStyle = gradien;
+  ctx.fillRect(0, 0, W, H);
+}
+
+/**
+ * Draw one whole poster onto `kanvas` from `state`.
+ * state: { layout, grade, title, subtitle, tagline, titleStyle, seal,
+ * grain, vignette, panels: [{ photo, zoom, ox, oy }] }.
+ */
+export function gambarCover(kanvas, state) {
+  const ctx = kanvas.getContext('2d');
+  const W = kanvas.width;
+  const H = kanvas.height;
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#f2ead9';
   ctx.fillRect(0, 0, W, H);
-
-  layout.panels.forEach((panel, i) => {
-    const rect = {
-      x: panel.x * W + gutter,
-      y: panel.y * H + gutter,
-      w: panel.w * W - gutter * 2,
-      h: panel.h * H - gutter * 2,
-    };
-    const slot = state.panels[i] ?? {};
-    const photo = slot.photo;
-    ctx.save();
-    if (photo) {
-      ctx.filter = grade.filter;
-      drawPanelPhoto(ctx, photo, rect, slot.zoom ?? 1, slot.ox ?? 0, slot.oy ?? 0);
-      ctx.filter = 'none';
-      for (const wash of grade.washes) drawWash(ctx, rect, wash);
-    } else {
-      ctx.fillStyle = '#241533';
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.font = `${Math.round(rect.h * 0.05)}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('Add a photo', rect.x + rect.w / 2, rect.y + rect.h / 2);
-    }
-    ctx.restore();
+  state.layout.panels.forEach((panel, i) => {
+    gambarPanelFoto(ctx, panel, state.panels[i], state.grade, W, H);
   });
-
-  // White seams between panels, drawn after the photos. Each seam runs only
-  // across the span of the panel that meets the edge, never over a neighbour.
-  ctx.fillStyle = '#f2ead9';
-  for (const panel of layout.panels) {
-    if (panel.x > 0) {
-      ctx.fillRect(panel.x * W - gutter, panel.y * H - gutter, gutter * 2, panel.h * H + gutter * 2);
-    }
-    if (panel.y > 0) {
-      ctx.fillRect(panel.x * W - gutter, panel.y * H - gutter, panel.w * W + gutter * 2, gutter * 2);
-    }
-  }
-
-  const zone = {
-    x: layout.titleZone.x * W,
-    y: layout.titleZone.y * H,
-    w: layout.titleZone.w * W,
-    h: layout.titleZone.h * H,
-  };
-  drawTitle(ctx, state, zone, W, H);
-  if (state.seal) drawSeal(ctx, W, H);
-  drawBilling(ctx, W, H);
-
-  if (state.grain) {
-    ctx.save();
-    ctx.globalAlpha = 0.09;
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.fillStyle = ctx.createPattern(getGrainTile(), 'repeat');
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
-  }
-  if (state.vignette) {
-    const vig = ctx.createRadialGradient(
-      W / 2, H / 2, Math.min(W, H) * 0.42,
-      W / 2, H / 2, Math.max(W, H) * 0.75,
-    );
-    vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vig.addColorStop(1, 'rgba(10, 4, 20, 0.38)');
-    ctx.fillStyle = vig;
-    ctx.fillRect(0, 0, W, H);
-  }
+  gambarCelahPanel(ctx, state.layout, W, H);
+  gambarJudul(ctx, state.layout.titleZone, state, W, H);
+  if (state.seal) gambarSegel(ctx, W, H);
+  gambarKredit(ctx, W, H);
+  if (state.grain) gambarGrain(ctx, W, H);
+  if (state.vignette) gambarVignette(ctx, W, H);
   ctx.restore();
 }

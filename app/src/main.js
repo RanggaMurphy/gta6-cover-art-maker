@@ -1,80 +1,48 @@
-// Wires the page: photo tray, layout and grade choices, per-panel crop by
-// dragging the preview, editable words, and PNG export in the three post
-// sizes. A `?shot=` query sets up a fixed scene for a screenshot instead.
+// main.js — the editor of Neon Bay Cover Studio.
+// Wires the page to the cover engine: option buttons, photo tray, upload,
+// sliders, canvas click / drag / scroll, surprise, and PNG export.
+// With a ?shot= query it hands the scene to shots.js first, so the
+// screenshot driver and the editor always draw the same cover.
 
-import { drawCover } from './cover.js';
-import { GRADES } from './grades.js';
-import { LAYOUTS, layoutById } from './layouts.js';
-import { runShot } from './shots.js';
+import { gambarCover } from './cover.js';
+import { GRADES, cariGrade } from './grades.js';
+import { LAYOUTS, cariLayout } from './layouts.js';
+import { FOTO_SAMPEL, muatFont, muatFotoSampel, muatGambar, jalankanShot } from './shots.js';
 
-const SAMPLES = [
-  { id: 'hero', src: 'samples/hero.jpg', label: 'Hero portrait' },
-  { id: 'driver', src: 'samples/driver.jpg', label: 'Driver and convertible' },
-  { id: 'street', src: 'samples/street.jpg', label: 'Neon boulevard' },
-  { id: 'boulevard', src: 'samples/boulevard.jpg', label: 'Boulevard' },
-  { id: 'pier', src: 'samples/pier.jpg', label: 'Pier' },
-];
+const kanvas = document.getElementById('cover');
+const tray = document.getElementById('tray');
+const statusEl = document.getElementById('status');
+const panelNameEl = document.getElementById('panelName');
+const zoomSlider = document.getElementById('zoomSlider');
+const panXSlider = document.getElementById('panXSlider');
+const panYSlider = document.getElementById('panYSlider');
+const titleInput = document.getElementById('titleInput');
+const subtitleInput = document.getElementById('subtitleInput');
+const taglineInput = document.getElementById('taglineInput');
+const uploadInput = document.getElementById('upload');
 
-const TITLE_STYLES = [
-  { id: 'chrome', name: 'Chrome' },
-  { id: 'solid', name: 'Solid white' },
-  { id: 'outline', name: 'Outline' },
-];
-
-const SIZES = {
-  square: { w: 1080, h: 1080, name: 'cover-1080x1080.png' },
-  portrait: { w: 1080, h: 1350, name: 'cover-1080x1350.png' },
-  wide: { w: 1920, h: 1080, name: 'cover-1920x1080.png' },
+const UKURAN_EXPORT = {
+  square: { label: '1080x1080', w: 1080, h: 1080, file: 'cover-1080x1080.png' },
+  portrait: { label: '1080x1350', w: 1080, h: 1350, file: 'cover-1080x1350.png' },
+  wide: { label: '1920x1080', w: 1920, h: 1080, file: 'cover-1920x1080.png' },
 };
 
-const canvas = document.getElementById('cover');
-const statusEl = document.getElementById('status');
+const JUDUL_ACAK = [
+  ['NEON BAY', 'SUNSET HEIST'],
+  ['PALM CITY', 'MIDNIGHT RUN'],
+  ['VICE NIGHTS', 'OCEAN DRIVE'],
+  ['HOT PURSUIT', 'NEON HEAT'],
+];
 
-/** Loads the two display fonts shipped under app/fonts (SIL Open Font License). */
-async function loadFonts() {
-  const faces = [
-    new FontFace('Anton', 'url(fonts/Anton-Regular.ttf)', { weight: '400' }),
-    new FontFace('Bebas Neue', 'url(fonts/BebasNeue-Regular.ttf)', { weight: '400' }),
-  ];
-  for (const face of faces) {
-    try {
-      const loaded = await face.load();
-      document.fonts.add(loaded);
-    } catch { /* fall back to system fonts */ }
-  }
-  try {
-    await Promise.all([
-      document.fonts.load('40px Anton'),
-      document.fonts.load('40px "Bebas Neue"'),
-    ]);
-  } catch { /* fall back to system fonts */ }
-}
-
-/** Loads an image from a URL, resolving once it can be drawn. */
-export function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-function defaultPanels(layoutId) {
-  const count = layoutById(layoutId).panels.length;
-  const picks = ['hero', 'driver', 'street', 'boulevard', 'pier'];
-  return Array.from({ length: count }, (_, i) => ({
-    photoId: picks[i % picks.length],
-    photo: null,
-    zoom: 1,
-    ox: 0,
-    oy: 0,
-  }));
-}
+const GAYA_JUDUL = [
+  { id: 'chrome', nama: 'Chrome' },
+  { id: 'solid', nama: 'Solid' },
+  { id: 'outline', nama: 'Outline' },
+];
 
 const state = {
-  layout: 'hero-split',
-  grade: 'sunset',
+  layoutId: 'hero-split',
+  gradeId: 'sunset',
   title: 'NEON BAY',
   subtitle: 'SUNSET HEIST',
   tagline: 'WELCOME TO THE BAY · EST. 2026',
@@ -82,303 +50,442 @@ const state = {
   seal: true,
   grain: true,
   vignette: true,
-  size: 'square',
-  panels: defaultPanels('hero-split'),
-  selectedPanel: 0,
+  panels: [],
+  terpilih: 0,
 };
 
-const library = []; // { id, src, label, img }
-let pickedId = 'hero';
+const fotoTerdaftar = [];
+let fotoTerpilihId = 'hero';
+let mulaiSeret = null;
 
-function redraw() {
-  drawCover(canvas, state);
+const batasi = (nilai, min, maks) => Math.max(min, Math.min(maks, nilai));
+const acakDari = (daftar) => daftar[Math.floor(Math.random() * daftar.length)];
+
+function layoutAktif() {
+  return cariLayout(state.layoutId);
 }
 
-function syncPanelControls() {
-  const slot = state.panels[state.selectedPanel];
-  document.getElementById('zoom').value = slot.zoom;
-  document.getElementById('panX').value = slot.ox;
-  document.getElementById('panY').value = slot.oy;
-  document.getElementById('panelName').textContent =
-    `${layoutById(state.layout).panels[state.selectedPanel].name} (panel ${state.selectedPanel + 1})`;
+function gradeAktif() {
+  return cariGrade(state.gradeId);
 }
 
-function buildChoices(el, items, current, onPick) {
-  el.innerHTML = '';
-  for (const item of items) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = item.name;
-    b.dataset.id = item.id;
-    if (item.id === current) b.classList.add('on');
-    b.addEventListener('click', () => {
-      el.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
-      b.classList.add('on');
-      onPick(item.id);
-    });
-    el.appendChild(b);
-  }
+function panelTerpilih() {
+  return state.panels[state.terpilih];
 }
 
-function buildTray() {
-  const tray = document.getElementById('tray');
-  tray.innerHTML = '';
-  for (const photo of library) {
-    const thumb = document.createElement('img');
-    thumb.src = photo.src;
-    thumb.alt = photo.label;
-    thumb.title = photo.label;
-    if (photo.id === pickedId) thumb.classList.add('picked');
-    thumb.addEventListener('click', () => {
-      pickedId = photo.id;
-      tray.querySelectorAll('img').forEach((x) => x.classList.remove('picked'));
-      thumb.classList.add('picked');
-    });
-    thumb.addEventListener('dblclick', () => assignPickedToSelected());
-    tray.appendChild(thumb);
-  }
-}
-
-function photoById(id) {
-  return library.find((p) => p.id === id) ?? null;
-}
-
-function assignPickedToSelected() {
-  const photo = photoById(pickedId);
-  if (!photo) return;
-  const slot = state.panels[state.selectedPanel];
-  slot.photoId = photo.id;
-  slot.photo = photo.img;
-  slot.zoom = 1;
-  slot.ox = 0;
-  slot.oy = 0;
-  syncPanelControls();
-  redraw();
-}
-
-function assignPickedToAll() {
-  const photo = photoById(pickedId);
-  if (!photo) return;
-  const n = state.panels.length;
-  state.panels.forEach((slot, i) => {
-    slot.photoId = photo.id;
-    slot.photo = photo.img;
-    slot.zoom = n > 1 ? 1.35 : 1;
-    // Spread one photo across the panels so each shows a different crop.
-    slot.ox = n > 1 ? (i - (n - 1) / 2) * 0.22 : 0;
-    slot.oy = 0;
-  });
-  syncPanelControls();
-  redraw();
-}
-
-function setSize(key) {
-  state.size = key;
-  const size = SIZES[key];
-  canvas.width = size.w;
-  canvas.height = size.h;
-  redraw();
-}
-
-function exportPng(key) {
-  setSize(key);
-  const size = SIZES[key];
-  const off = document.createElement('canvas');
-  off.width = size.w;
-  off.height = size.h;
-  drawCover(off, state);
-  off.toBlob((blob) => {
-    if (!blob) {
-      statusEl.textContent = 'Export failed in this browser.';
-      return;
-    }
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = size.name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    statusEl.textContent = `Saved ${size.name}`;
-  }, 'image/png');
-}
-
-function shuffle() {
-  const rnd = (n) => Math.floor(Math.random() * n);
-  state.layout = LAYOUTS[rnd(LAYOUTS.length)].id;
-  state.grade = GRADES[rnd(GRADES.length)].id;
-  state.titleStyle = TITLE_STYLES[rnd(TITLE_STYLES.length)].id;
-  state.panels = defaultPanels(state.layout);
-  state.selectedPanel = 0;
-  const titles = [
-    ['NEON BAY', 'SUNSET HEIST'],
-    ['PALM CITY', 'MIDNIGHT RUN'],
-    ['VICE NIGHTS', 'OCEAN DRIVE'],
-    ['HOT PURSUIT', 'NEON HEAT'],
-  ];
-  const [t, s] = titles[rnd(titles.length)];
-  state.title = t;
-  state.subtitle = s;
-  document.getElementById('title').value = t;
-  document.getElementById('subtitle').value = s;
-  for (const slot of state.panels) {
-    const photo = library[rnd(library.length)];
-    slot.photoId = photo.id;
-    slot.photo = photo.img;
-    slot.zoom = 1 + Math.random() * 0.5;
-    slot.ox = (Math.random() - 0.5) * 0.3;
-    slot.oy = (Math.random() - 0.5) * 0.2;
-  }
-  buildChoices(document.getElementById('layoutChoices'), LAYOUTS, state.layout, pickLayout);
-  buildChoices(document.getElementById('gradeChoices'), GRADES, state.grade, pickGrade);
-  buildChoices(document.getElementById('titleStyles'), TITLE_STYLES, state.titleStyle, pickTitleStyle);
-  syncPanelControls();
-  redraw();
-}
-
-function pickLayout(id) {
-  state.layout = id;
-  state.panels = defaultPanels(id);
-  state.selectedPanel = 0;
-  for (const slot of state.panels) {
-    const photo = photoById(slot.photoId);
-    slot.photo = photo ? photo.img : null;
-  }
-  syncPanelControls();
-  redraw();
-}
-
-function pickGrade(id) {
-  state.grade = id;
-  redraw();
-}
-
-function pickTitleStyle(id) {
-  state.titleStyle = id;
-  redraw();
-}
-
-/** Maps a pointer event on the displayed canvas to canvas pixels. */
-function eventToCanvas(e) {
-  const rect = canvas.getBoundingClientRect();
+function statusKeCover() {
   return {
-    x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-    y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    layout: layoutAktif(),
+    grade: gradeAktif(),
+    title: state.title,
+    subtitle: state.subtitle,
+    tagline: state.tagline,
+    titleStyle: state.titleStyle,
+    seal: state.seal,
+    grain: state.grain,
+    vignette: state.vignette,
+    panels: state.panels,
   };
 }
 
-function panelAt(x, y) {
-  const layout = layoutById(state.layout);
-  for (let i = layout.panels.length - 1; i >= 0; i--) {
-    const p = layout.panels[i];
-    if (x >= p.x * canvas.width && x <= (p.x + p.w) * canvas.width
-      && y >= p.y * canvas.height && y <= (p.y + p.h) * canvas.height) return i;
-  }
-  return -1;
+function gambarUlang() {
+  gambarCover(kanvas, statusKeCover());
 }
 
-function wireDragging() {
-  let drag = null;
-  canvas.addEventListener('pointerdown', (e) => {
-    const pos = eventToCanvas(e);
-    const i = panelAt(pos.x, pos.y);
+function setStatus(teks) {
+  statusEl.textContent = teks;
+}
+
+/** Resize the panel list to the active layout, keeping what fits. */
+function sesuaikanPanelDenganLayout() {
+  const jumlah = layoutAktif().panels.length;
+  while (state.panels.length < jumlah) {
+    state.panels.push({ photo: null, photoId: null, zoom: 1, ox: 0, oy: 0 });
+  }
+  state.panels.length = jumlah;
+  state.terpilih = Math.min(state.terpilih, jumlah - 1);
+}
+
+/** Fill empty panels with demo photos in turn, so a layout never sits blank. */
+function isiPanelKosongDenganSampel() {
+  state.panels.forEach((panel, i) => {
+    if (panel.photo) return;
+    const id = FOTO_SAMPEL[i % FOTO_SAMPEL.length].id;
+    muatFotoSampel(id).then((img) => {
+      panel.photo = img;
+      panel.photoId = id;
+      gambarUlang();
+    });
+  });
+}
+
+/** Build one row of option buttons; returns a refresh for the active one. */
+function bangunTombolPilihan(wadah, daftar, bacaAktif, saatPilih) {
+  const tombol = daftar.map((item) => {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.textContent = item.nama;
+    el.addEventListener('click', () => {
+      saatPilih(item.id);
+      segarkan();
+    });
+    wadah.appendChild(el);
+    return { id: item.id, el };
+  });
+  function segarkan() {
+    const aktif = bacaAktif();
+    tombol.forEach(({ id, el }) => el.classList.toggle('active', id === aktif));
+  }
+  segarkan();
+  return segarkan;
+}
+
+let segarkanLayout;
+let segarkanGrade;
+let segarkanGaya;
+
+function bangunKontrol() {
+  segarkanLayout = bangunTombolPilihan(
+    document.getElementById('layoutOptions'),
+    LAYOUTS,
+    () => state.layoutId,
+    (id) => {
+      state.layoutId = id;
+      sesuaikanPanelDenganLayout();
+      isiPanelKosongDenganSampel();
+      sinkronKontrol();
+      gambarUlang();
+    },
+  );
+  segarkanGrade = bangunTombolPilihan(
+    document.getElementById('gradeOptions'),
+    GRADES,
+    () => state.gradeId,
+    (id) => {
+      state.gradeId = id;
+      gambarUlang();
+    },
+  );
+  segarkanGaya = bangunTombolPilihan(
+    document.getElementById('styleOptions'),
+    GAYA_JUDUL,
+    () => state.titleStyle,
+    (id) => {
+      state.titleStyle = id;
+      gambarUlang();
+    },
+  );
+
+  zoomSlider.addEventListener('input', () => {
+    panelTerpilih().zoom = Number(zoomSlider.value);
+    gambarUlang();
+  });
+  panXSlider.addEventListener('input', () => {
+    panelTerpilih().ox = Number(panXSlider.value);
+    gambarUlang();
+  });
+  panYSlider.addEventListener('input', () => {
+    panelTerpilih().oy = Number(panYSlider.value);
+    gambarUlang();
+  });
+
+  document.getElementById('fillPanelBtn').addEventListener('click', () => {
+    isiPanelTerpilih(fotoTerpilihId);
+  });
+  document.getElementById('fillAllBtn').addEventListener('click', () => {
+    isiSemuaPanel(fotoTerpilihId);
+  });
+
+  titleInput.addEventListener('input', () => {
+    state.title = titleInput.value;
+    gambarUlang();
+  });
+  subtitleInput.addEventListener('input', () => {
+    state.subtitle = subtitleInput.value;
+    gambarUlang();
+  });
+  taglineInput.addEventListener('input', () => {
+    state.tagline = taglineInput.value;
+    gambarUlang();
+  });
+  document.getElementById('sealCheck').addEventListener('change', (e) => {
+    state.seal = e.target.checked;
+    gambarUlang();
+  });
+  document.getElementById('grainCheck').addEventListener('change', (e) => {
+    state.grain = e.target.checked;
+    gambarUlang();
+  });
+  document.getElementById('vignetteCheck').addEventListener('change', (e) => {
+    state.vignette = e.target.checked;
+    gambarUlang();
+  });
+
+  document.getElementById('exportSquare').addEventListener('click', () => exportPNG('square'));
+  document.getElementById('exportPortrait').addEventListener('click', () => exportPNG('portrait'));
+  document.getElementById('exportWide').addEventListener('click', () => exportPNG('wide'));
+  document.getElementById('surpriseBtn').addEventListener('click', acakSemua);
+  uploadInput.addEventListener('change', terimaUnggahan);
+  pasangInteraksiKanvas();
+}
+
+/** Keep every control showing the state: sliders, inputs, active buttons. */
+function sinkronKontrol() {
+  const panel = panelTerpilih();
+  panelNameEl.textContent = layoutAktif().panels[state.terpilih].nama;
+  zoomSlider.value = String(panel.zoom);
+  panXSlider.value = String(panel.ox);
+  panYSlider.value = String(panel.oy);
+  titleInput.value = state.title;
+  subtitleInput.value = state.subtitle;
+  taglineInput.value = state.tagline;
+  document.getElementById('sealCheck').checked = state.seal;
+  document.getElementById('grainCheck').checked = state.grain;
+  document.getElementById('vignetteCheck').checked = state.vignette;
+  if (segarkanLayout) segarkanLayout();
+  if (segarkanGrade) segarkanGrade();
+  if (segarkanGaya) segarkanGaya();
+  tray.querySelectorAll('.thumb').forEach((el) => {
+    el.classList.toggle('selected', el.dataset.fotoId === fotoTerpilihId);
+  });
+}
+
+/** One tray thumbnail: click picks the photo, double-click fills the panel. */
+function tambahThumb({ id, nama, src }) {
+  const tombol = document.createElement('button');
+  tombol.type = 'button';
+  tombol.className = 'thumb';
+  tombol.dataset.fotoId = id;
+  tombol.title = nama;
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = nama;
+  tombol.appendChild(img);
+  tombol.addEventListener('click', () => pilihFoto(id));
+  tombol.addEventListener('dblclick', () => isiPanelTerpilih(id));
+  tray.appendChild(tombol);
+  return tombol;
+}
+
+function bangunTray() {
+  for (const foto of FOTO_SAMPEL) tambahThumb(foto);
+  sinkronKontrol();
+}
+
+function pilihFoto(id) {
+  fotoTerpilihId = id;
+  sinkronKontrol();
+}
+
+async function isiPanelTerpilih(id) {
+  const img = await muatFotoDenganId(id);
+  if (!img) return;
+  const panel = panelTerpilih();
+  panel.photo = img;
+  panel.photoId = id;
+  panel.zoom = 1;
+  panel.ox = 0;
+  panel.oy = 0;
+  fotoTerpilihId = id;
+  sinkronKontrol();
+  gambarUlang();
+  setStatus(`Panel ${layoutAktif().panels[state.terpilih].nama} diisi foto ${id}.`);
+}
+
+async function isiSemuaPanel(id) {
+  const img = await muatFotoDenganId(id);
+  if (!img) return;
+  const jumlah = state.panels.length;
+  state.panels.forEach((panel, i) => {
+    panel.photo = img;
+    panel.photoId = id;
+    panel.zoom = 1.35;
+    panel.ox = (i - (jumlah - 1) / 2) * 0.3;
+    panel.oy = 0;
+  });
+  fotoTerpilihId = id;
+  sinkronKontrol();
+  gambarUlang();
+  setStatus(`Satu foto untuk semua ${jumlah} panel, tiap panel potongan berbeda.`);
+}
+
+async function muatFotoDenganId(id) {
+  const unggahan = fotoTerdaftar.find((f) => f.id === id);
+  if (unggahan) return unggahan.img;
+  try {
+    return await muatFotoSampel(id);
+  } catch {
+    setStatus(`Foto ${id} gagal dimuat.`);
+    return null;
+  }
+}
+
+/** User uploads: read through object URLs, into the tray and the panel. */
+async function terimaUnggahan() {
+  const files = [...uploadInput.files].filter((f) => f.type.startsWith('image/'));
+  if (!files.length) return;
+  let pertama = null;
+  for (const file of files) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await muatGambar(url);
+      const id = `unggah-${fotoTerdaftar.length}`;
+      fotoTerdaftar.push({ id, nama: file.name, img });
+      tambahThumb({ id, nama: file.name, src: url });
+      if (!pertama) pertama = id;
+    } catch {
+      setStatus(`File ${file.name} gagal dibaca.`);
+    }
+  }
+  uploadInput.value = '';
+  if (pertama) {
+    pilihFoto(pertama);
+    await isiPanelTerpilih(pertama);
+  }
+}
+
+/** Random layout, grade, title style, title pair and one photo per panel. */
+function acakSemua() {
+  state.layoutId = acakDari(LAYOUTS).id;
+  state.gradeId = acakDari(GRADES).id;
+  state.titleStyle = acakDari(GAYA_JUDUL).id;
+  const [judul, sub] = acakDari(JUDUL_ACAK);
+  state.title = judul;
+  state.subtitle = sub;
+  sesuaikanPanelDenganLayout();
+  state.panels.forEach((panel) => {
+    const id = acakDari(FOTO_SAMPEL).id;
+    panel.zoom = 1;
+    panel.ox = 0;
+    panel.oy = 0;
+    muatFotoSampel(id).then((img) => {
+      panel.photo = img;
+      panel.photoId = id;
+      gambarUlang();
+    });
+  });
+  sinkronKontrol();
+  gambarUlang();
+  setStatus('Surprise! Layout, grade, dan judul diacak.');
+}
+
+/** Export the cover at one post size: redraw offscreen, download the PNG. */
+function exportPNG(kunci) {
+  const ukuran = UKURAN_EXPORT[kunci];
+  const lepas = document.createElement('canvas');
+  lepas.width = ukuran.w;
+  lepas.height = ukuran.h;
+  gambarCover(lepas, statusKeCover());
+  setStatus(`Mengekspor ${ukuran.label}…`);
+  lepas.toBlob((blob) => {
+    if (!blob) {
+      setStatus('Export gagal — coba lagi.');
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = ukuran.file;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    setStatus(`Cover ${ukuran.label} tersimpan sebagai ${ukuran.file}.`);
+  }, 'image/png');
+}
+
+/** Which panel holds this point on the canvas, in fractions. */
+function panelPadaTitik(clientX, clientY) {
+  const rect = kanvas.getBoundingClientRect();
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
+  return layoutAktif().panels.findIndex(
+    (p) => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h,
+  );
+}
+
+function pasangInteraksiKanvas() {
+  kanvas.addEventListener('pointerdown', (e) => {
+    const i = panelPadaTitik(e.clientX, e.clientY);
     if (i < 0) return;
-    state.selectedPanel = i;
-    syncPanelControls();
-    canvas.setPointerCapture(e.pointerId);
-    drag = { x: pos.x, y: pos.y, ox: state.panels[i].ox, oy: state.panels[i].oy };
-    redraw();
+    state.terpilih = i;
+    sinkronKontrol();
+    const panel = panelTerpilih();
+    mulaiSeret = { x: e.clientX, y: e.clientY, ox: panel.ox, oy: panel.oy };
+    kanvas.setPointerCapture(e.pointerId);
   });
-  canvas.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const pos = eventToCanvas(e);
-    const panel = layoutById(state.layout).panels[state.selectedPanel];
-    const slot = state.panels[state.selectedPanel];
-    slot.ox = Math.max(-0.5, Math.min(0.5, drag.ox + (pos.x - drag.x) / (panel.w * canvas.width)));
-    slot.oy = Math.max(-0.5, Math.min(0.5, drag.oy + (pos.y - drag.y) / (panel.h * canvas.height)));
-    syncPanelControls();
-    redraw();
+  kanvas.addEventListener('pointermove', (e) => {
+    if (!mulaiSeret) return;
+    const rect = kanvas.getBoundingClientRect();
+    const panel = layoutAktif().panels[state.terpilih];
+    const dxKan = ((e.clientX - mulaiSeret.x) * kanvas.width) / rect.width;
+    const dyKan = ((e.clientY - mulaiSeret.y) * kanvas.height) / rect.height;
+    const keadaan = panelTerpilih();
+    keadaan.ox = batasi(mulaiSeret.ox + dxKan / (panel.w * kanvas.width), -0.5, 0.5);
+    keadaan.oy = batasi(mulaiSeret.oy + dyKan / (panel.h * kanvas.height), -0.5, 0.5);
+    gambarUlang();
+    zoomSlider.value = String(keadaan.zoom);
+    panXSlider.value = String(keadaan.ox);
+    panYSlider.value = String(keadaan.oy);
   });
-  const endDrag = () => { drag = null; };
-  canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
-  canvas.addEventListener('wheel', (e) => {
+  const akhiriSeret = () => {
+    mulaiSeret = null;
+  };
+  kanvas.addEventListener('pointerup', akhiriSeret);
+  kanvas.addEventListener('pointercancel', akhiriSeret);
+  kanvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const pos = eventToCanvas(e);
-    const i = panelAt(pos.x, pos.y);
-    if (i < 0) return;
-    state.selectedPanel = i;
-    const slot = state.panels[i];
-    slot.zoom = Math.max(1, Math.min(3, slot.zoom * (e.deltaY < 0 ? 1.08 : 0.92)));
-    syncPanelControls();
-    redraw();
+    const panel = panelTerpilih();
+    panel.zoom = batasi(panel.zoom * (e.deltaY < 0 ? 1.08 : 0.925), 1, 3);
+    gambarUlang();
+    zoomSlider.value = String(panel.zoom);
   }, { passive: false });
 }
 
-function wireControls() {
-  document.getElementById('zoom').addEventListener('input', (e) => {
-    state.panels[state.selectedPanel].zoom = Number(e.target.value);
-    redraw();
-  });
-  document.getElementById('panX').addEventListener('input', (e) => {
-    state.panels[state.selectedPanel].ox = Number(e.target.value);
-    redraw();
-  });
-  document.getElementById('panY').addEventListener('input', (e) => {
-    state.panels[state.selectedPanel].oy = Number(e.target.value);
-    redraw();
-  });
-  document.getElementById('fillPanel').addEventListener('click', assignPickedToSelected);
-  document.getElementById('fillAll').addEventListener('click', assignPickedToAll);
-  document.getElementById('title').addEventListener('input', (e) => { state.title = e.target.value; redraw(); });
-  document.getElementById('subtitle').addEventListener('input', (e) => { state.subtitle = e.target.value; redraw(); });
-  document.getElementById('tagline').addEventListener('input', (e) => { state.tagline = e.target.value; redraw(); });
-  document.getElementById('seal').addEventListener('change', (e) => { state.seal = e.target.checked; redraw(); });
-  document.getElementById('grain').addEventListener('change', (e) => { state.grain = e.target.checked; redraw(); });
-  document.getElementById('vignette').addEventListener('change', (e) => { state.vignette = e.target.checked; redraw(); });
-  document.getElementById('exportSquare').addEventListener('click', () => exportPng('square'));
-  document.getElementById('exportPortrait').addEventListener('click', () => exportPng('portrait'));
-  document.getElementById('exportWide').addEventListener('click', () => exportPng('wide'));
-  document.getElementById('shuffle').addEventListener('click', shuffle);
-  document.getElementById('upload').addEventListener('change', async (e) => {
-    for (const file of e.target.files) {
-      const url = URL.createObjectURL(file);
-      try {
-        const img = await loadImage(url);
-        const id = `user-${library.length}`;
-        library.push({ id, src: url, label: file.name, img });
-        pickedId = id;
-      } catch { /* skip unreadable files */ }
+/** Start the editor: a scene from the query, or the default cover. */
+async function mulai() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('shot')) {
+    const adegan = await jalankanShot(params);
+    state.layoutId = adegan.layout.id;
+    state.gradeId = adegan.grade.id;
+    state.title = adegan.title;
+    state.subtitle = adegan.subtitle;
+    state.tagline = adegan.tagline;
+    state.titleStyle = adegan.titleStyle;
+    state.seal = adegan.seal;
+    state.grain = adegan.grain;
+    state.vignette = adegan.vignette;
+    state.panels = adegan.panels.map((p) => ({
+      photo: p.photo,
+      photoId: p.photoId,
+      zoom: p.zoom,
+      ox: p.ox,
+      oy: p.oy,
+    }));
+    fotoTerpilihId = adegan.panels[0] && adegan.panels[0].photoId ? adegan.panels[0].photoId : 'hero';
+  } else {
+    await muatFont();
+    const fotoAwal = ['hero', 'driver', 'street'];
+    const layout = cariLayout('hero-split');
+    state.panels = [];
+    for (let i = 0; i < layout.panels.length; i++) {
+      const id = fotoAwal[i % fotoAwal.length];
+      state.panels.push({
+        photo: await muatFotoSampel(id),
+        photoId: id,
+        zoom: 1,
+        ox: 0,
+        oy: 0,
+      });
     }
-    buildTray();
-    assignPickedToSelected();
-  });
+  }
+  bangunKontrol();
+  bangunTray();
+  sinkronKontrol();
+  gambarUlang();
+  window.__shotReady = true;
 }
 
-async function init() {
-  await loadFonts();
-  for (const sample of SAMPLES) {
-    try {
-      const img = await loadImage(sample.src);
-      library.push({ ...sample, img });
-    } catch { /* a missing sample just stays out of the tray */ }
-  }
-  for (const slot of state.panels) {
-    const photo = photoById(slot.photoId);
-    slot.photo = photo ? photo.img : null;
-  }
-  buildTray();
-  buildChoices(document.getElementById('layoutChoices'), LAYOUTS, state.layout, pickLayout);
-  buildChoices(document.getElementById('gradeChoices'), GRADES, state.grade, pickGrade);
-  buildChoices(document.getElementById('titleStyles'), TITLE_STYLES, state.titleStyle, pickTitleStyle);
-  wireControls();
-  wireDragging();
-  syncPanelControls();
-  setSize('square');
-
-  const query = new URLSearchParams(location.search);
-  const shot = query.get('shot');
-  if (shot) {
-    await runShot(shot, query, { state, library, loadImage, setSize, redraw, exportPng });
-  }
-}
-
-init();
+mulai().catch((err) => {
+  console.error(err);
+  setStatus(`Gagal memuat: ${err.message}`);
+});

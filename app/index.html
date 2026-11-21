@@ -1,71 +1,80 @@
 <!doctype html>
-<html lang="en">
+<html lang="id">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Neon Bay Cover Studio</title>
-<link rel="stylesheet" href="./style.css">
+<title>Neon Bay Cover Studio — GTA-style cover maker</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="brand"><span class="brand-mark">NB</span> Neon Bay <em>Cover Studio</em></div>
-  <p class="tagline">Turn your photos into a multi-panel poster. Everything runs in this page, offline.</p>
+<header class="masthead">
+  <div>
+    <h1>Neon Bay Cover Studio</h1>
+    <p class="tagline">Ubah fotomu jadi cover art gaya poster GTA 6. Semuanya berjalan offline di halaman ini, fotomu tidak pernah diunggah ke mana pun.</p>
+  </div>
 </header>
-<main class="app">
+<main class="workbench">
   <section class="stage">
     <div class="canvas-wrap">
-      <canvas id="cover" width="1080" height="1080" aria-label="Cover preview"></canvas>
-      <p class="hint" id="panelHint">Click a panel to select it, drag to move its photo, scroll to zoom.</p>
+      <canvas id="cover" width="1080" height="1080"></canvas>
     </div>
-    <div class="tray" id="tray" aria-label="Photos"></div>
-    <label class="upload">Add your own photos
-      <input id="upload" type="file" accept="image/*" multiple>
+    <p class="hint">Klik sebuah panel untuk memilihnya. Seret untuk menggeser foto, gulir (scroll) untuk zoom.</p>
+    <div class="tray" id="tray" aria-label="Foto"></div>
+    <label class="upload">+ Tambah fotomu
+      <input type="file" id="upload" accept="image/*" multiple hidden>
     </label>
   </section>
-
   <aside class="controls">
     <section class="group">
-      <h2>1 &middot; Layout</h2>
-      <div class="choices" id="layoutChoices"></div>
+      <h2>1 · Layout</h2>
+      <div class="options" id="layoutOptions"></div>
     </section>
-
     <section class="group">
-      <h2>2 &middot; Photo in the selected panel</h2>
-      <p class="panel-name" id="panelName">Panel 1</p>
-      <label>Zoom <input id="zoom" type="range" min="1" max="3" step="0.01" value="1"></label>
-      <label>Move sideways <input id="panX" type="range" min="-0.5" max="0.5" step="0.01" value="0"></label>
-      <label>Move up and down <input id="panY" type="range" min="-0.5" max="0.5" step="0.01" value="0"></label>
+      <h2>2 · Photo in the selected panel</h2>
+      <p class="panel-name">Panel: <strong id="panelName">Hero</strong></p>
+      <label>Zoom
+        <input type="range" id="zoomSlider" min="1" max="3" step="0.01" value="1">
+      </label>
+      <label>Move sideways
+        <input type="range" id="panXSlider" min="-0.5" max="0.5" step="0.01" value="0">
+      </label>
+      <label>Move up and down
+        <input type="range" id="panYSlider" min="-0.5" max="0.5" step="0.01" value="0">
+      </label>
       <div class="row">
-        <button id="fillPanel" type="button">Fill with this photo</button>
-        <button id="fillAll" type="button">One photo, all panels</button>
+        <button id="fillPanelBtn" type="button">Fill with this photo</button>
+        <button id="fillAllBtn" type="button">One photo, all panels</button>
       </div>
     </section>
-
     <section class="group">
-      <h2>3 &middot; Words</h2>
-      <label>Title <input id="title" type="text" maxlength="24" value="NEON BAY"></label>
-      <label>Subtitle <input id="subtitle" type="text" maxlength="40" value="SUNSET HEIST"></label>
-      <label>Small line <input id="tagline" type="text" maxlength="60" value="WELCOME TO THE BAY &middot; EST. 2026"></label>
-      <div class="choices" id="titleStyles"></div>
-      <label class="check"><input id="seal" type="checkbox" checked> Round seal on the cover</label>
+      <h2>3 · Words</h2>
+      <label>Title
+        <input type="text" id="titleInput" value="NEON BAY" maxlength="24">
+      </label>
+      <label>Subtitle
+        <input type="text" id="subtitleInput" value="SUNSET HEIST" maxlength="40">
+      </label>
+      <label>Small line
+        <input type="text" id="taglineInput" value="WELCOME TO THE BAY · EST. 2026" maxlength="60">
+      </label>
+      <div class="options" id="styleOptions"></div>
+      <label class="check"><input type="checkbox" id="sealCheck" checked> Round seal</label>
     </section>
-
     <section class="group">
-      <h2>4 &middot; Grade</h2>
-      <div class="choices" id="gradeChoices"></div>
-      <label class="check"><input id="grain" type="checkbox" checked> Film grain</label>
-      <label class="check"><input id="vignette" type="checkbox" checked> Vignette</label>
+      <h2>4 · Grade</h2>
+      <div class="options" id="gradeOptions"></div>
+      <label class="check"><input type="checkbox" id="grainCheck" checked> Film grain</label>
+      <label class="check"><input type="checkbox" id="vignetteCheck" checked> Vignette</label>
     </section>
-
-    <section class="group export">
-      <h2>5 &middot; Export PNG</h2>
+    <section class="group">
+      <h2>5 · Export PNG</h2>
       <div class="row">
-        <button id="exportSquare" type="button">1080 &times; 1080</button>
-        <button id="exportPortrait" type="button">1080 &times; 1350</button>
-        <button id="exportWide" type="button">1920 &times; 1080</button>
+        <button id="exportSquare" type="button">1080×1080</button>
+        <button id="exportPortrait" type="button">1080×1350</button>
+        <button id="exportWide" type="button">1920×1080</button>
       </div>
-      <button id="shuffle" type="button" class="ghost">Surprise me</button>
-      <p id="status" role="status"></p>
+      <button id="surpriseBtn" type="button">Surprise me</button>
+      <p class="status" id="status" role="status">Siap — pilih foto, atur panel, lalu export.</p>
     </section>
   </aside>
 </main>
