@@ -8,7 +8,7 @@
 
 ## What it does
 
-- **Multi-panel posters** — five layouts (Hero Split, Triptych, Four Corners, Full Bleed, Sunset Strip) with one photo split across panels or several photos on one cover, each panel cropped and positioned on its own (drag, scroll to zoom, or the sliders).
+- **Multi-panel posters** — five layouts (Hero Split, Triptych, Four Corners, Full Bleed, Sunset Strip) where every panel holds its own photo (a portrait, a car, a beach, a neon street), each panel cropped and positioned on its own (drag, scroll to zoom, or the sliders). Splitting one photo across the panels is only an optional extra, not the default.
 - **Vice City grades** — five grades (Sunset, Neon Nights, Golden Hour, Teal Noir, Candy Pop) applied per panel and across the whole cover, with film grain and vignette.
 - **Bold original lettering** — editable title, subtitle, and small line in three styles (chrome, solid, outline), set in Anton and Bebas Neue, both shipped under the SIL Open Font License. No Rockstar Games logo, artwork, or font anywhere.
 - **Three post sizes** — export PNG at 1080×1080, 1080×1350, and 1920×1080, all client-side and instant.

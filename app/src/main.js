@@ -353,8 +353,15 @@ function acakSemua() {
   state.title = judul;
   state.subtitle = sub;
   sesuaikanPanelDenganLayout();
-  state.panels.forEach((panel) => {
-    const id = acakDari(FOTO_SAMPEL).id;
+  // Give every panel a different photo: shuffle a copy of the samples
+  // and take the first N for the N panels, so Surprise never repeats.
+  const acakan = [...FOTO_SAMPEL];
+  for (let i = acakan.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [acakan[i], acakan[j]] = [acakan[j], acakan[i]];
+  }
+  state.panels.forEach((panel, i) => {
+    const id = acakan[i % acakan.length].id;
     panel.zoom = 1;
     panel.ox = 0;
     panel.oy = 0;

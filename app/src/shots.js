@@ -58,7 +58,9 @@ const UKURAN_ADEGAN = {
  * Run one screenshot scene from the query string.
  * Query keys: shot (cover or editor), size, layout, grade, title,
  * subtitle, tagline, style, photos (comma list, one per panel, cycling),
- * zoom, spread (1 spreads one photo's pan across the panels).
+ * zoom, spread (1 spreads one photo's pan across the panels; this is an
+ * optional split-one-photo mode only, never the default, and never what
+ * the judging screenshots use — those give every panel its own photo).
  * Returns the cover state it drew, for the editor to adopt.
  */
 export async function jalankanShot(params) {
